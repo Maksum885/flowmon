@@ -2,24 +2,78 @@
 
 namespace Database\Seeders;
 
+use App\Models\AlertRule;
+use App\Models\Reading;
+use App\Models\Setting;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Akun operator (kata sandi awal, ganti nanti di Pengaturan)
+        $user = User::where('username', 'admin')->first() ?? new User();
+        $user->username = 'admin';
+        $user->password = Hash::make('admin12345');
+        $user->save();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Sembilan aturan alert
+        $rules = [
+            ['offline', 'Meter offline', true, ['menit' => 5], 1],
+            ['error_code', 'Kode error meter', false, [], 1],
+            ['signal_q', 'Kualitas sinyal (Q) rendah', true, ['batas' => 50], 6],
+            ['weak_signal', 'Sinyal hulu atau hilir lemah', false, ['batas' => null], 6],
+            ['time_ratio', 'Time ratio di luar batas', true, ['min' => 95, 'max' => 105], 6],
+            ['backflow', 'Aliran balik', true, ['neg_naik_m3' => 0.1], 1],
+            ['zero_flow', 'Aliran nol terlalu lama', true, ['menit' => 30], 1],
+            ['incomplete_window', 'Data jendela tidak lengkap', true, [], 1],
+            ['clock_drift', 'Jam meter menyimpang', false, ['detik' => 60], 1],
+        ];
+        foreach ($rules as [$code, $name, $enabled, $params, $count]) {
+            AlertRule::updateOrCreate(
+                ['code' => $code],
+                ['name' => $name, 'enabled' => $enabled, 'params' => $params, 'consecutive_count' => $count]
+            );
+        }
+
+        // Pengaturan awal
+        Setting::updateOrCreate(['key' => 'window_start'], ['value' => '09:00']);
+        Setting::updateOrCreate(['key' => 'mqtt_mapping'], ['value' => new \stdClass()]);
+        Setting::updateOrCreate(['key' => 'net_acc_check_enabled'], ['value' => false]);
+
+        // Pembacaan CONTOH, satu per menit selama 4 hari terakhir (UTC)
+        Reading::query()->delete();
+        $now = now()->startOfMinute();
+        $total = 308000.0;
+        $rows = [];
+        for ($t = $now->copy()->subDays(4); $t <= $now; $t->addMinute()) {
+            $minute = $t->hour * 60 + $t->minute;
+            $flow = 140 + 40 * sin(2 * M_PI * ($minute - 420) / 1440);
+            $total += $flow / 60;
+            $int = (int) floor($total);
+            $rows[] = [
+                'measured_at' => $t->format('Y-m-d H:i:s'),
+                'flow_rate' => round($flow, 3),
+                'velocity' => round($flow / 198.6, 3),
+                'sound_speed' => 1480,
+                'pos_int' => $int,
+                'pos_frac' => round($total - $int, 6),
+                'neg_int' => 1,
+                'neg_frac' => 0.2,
+                'signal_quality' => 87,
+                'signal_up' => 70.8,
+                'signal_down' => 68.5,
+                'time_ratio' => 100.3,
+            ];
+            if (count($rows) === 500) {
+                Reading::insert($rows);
+                $rows = [];
+            }
+        }
+        if ($rows) {
+            Reading::insert($rows);
+        }
     }
 }
