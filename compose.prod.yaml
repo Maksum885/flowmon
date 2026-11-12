@@ -1,0 +1,78 @@
+name: flowmon-prod
+
+x-app: &app
+  build:
+    context: .
+    target: app
+  image: flowmon-app:latest
+  restart: unless-stopped
+  env_file: .env.production
+  volumes:
+    - storage:/var/www/html/storage
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    env_file: .env.production
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/passwd:/mosquitto/config/passwd
+      - ./docker/mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto_data:/mosquitto/data
+
+  app:
+    <<: *app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  listener:
+    <<: *app
+    command: ["php", "artisan", "flowmon:listen"]
+    depends_on:
+      - app
+      - mosquitto
+
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      - app
+
+  caddy:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  mosquitto_data:
+  storage:
+  caddy_data:
+  caddy_config:

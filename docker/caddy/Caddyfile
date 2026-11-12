@@ -1,0 +1,19 @@
+{
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+
+{$APP_DOMAIN:localhost} {
+    root * /var/www/html/public
+    encode zstd gzip
+    php_fastcgi app:9000
+    file_server
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}

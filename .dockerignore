@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+node_modules
+vendor
+tests
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/spool/*
+compose*.yaml
+docker/mosquitto
+bootstrap/cache/*

@@ -2,18 +2,38 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_halaman_utama_mengalihkan_tamu_ke_login(): void
     {
-        $response = $this->get('/');
+        $this->get('/')->assertRedirect('/login');
+    }
 
-        $response->assertStatus(200);
+    public function test_halaman_login_terbuka(): void
+    {
+        $this->get('/login')->assertOk();
+    }
+
+    public function test_pemakaian_butuh_login(): void
+    {
+        $this->get('/pemakaian')->assertRedirect('/login');
+        $this->get('/pemakaian/export')->assertRedirect('/login');
+    }
+
+    public function test_halaman_baru_butuh_login(): void
+    {
+        foreach (['/alert', '/kesehatan', '/log'] as $url) {
+            $this->get($url)->assertRedirect('/login');
+        }
+    }
+
+    public function test_grafik_dan_pengaturan_butuh_login(): void
+    {
+        foreach (['/grafik', '/pengaturan'] as $url) {
+            $this->get($url)->assertRedirect('/login');
+        }
+        $this->post('/pengaturan/sandi')->assertRedirect('/login');
     }
 }

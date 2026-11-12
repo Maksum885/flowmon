@@ -1,0 +1,41 @@
+# Tambahan khusus VPS: Traefik yang sudah ada mengurus HTTPS,
+# dan semua data disimpan di folder ./data.
+services:
+  postgres:
+    volumes: !override
+      - ./data/postgres:/var/lib/postgresql/data
+
+  mosquitto:
+    volumes: !override
+      - ./docker/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/passwd:/mosquitto/config/passwd
+      - ./docker/mosquitto/acl:/mosquitto/config/acl:ro
+      - ./data/mosquitto:/mosquitto/data
+
+  app:
+    volumes: !override
+      - ./data/storage:/var/www/html/storage
+
+  listener:
+    volumes: !override
+      - ./data/storage:/var/www/html/storage
+
+  scheduler:
+    volumes: !override
+      - ./data/storage:/var/www/html/storage
+
+  caddy:
+    ports: !reset []
+    volumes: !reset []
+    networks: [default, shared-net]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=shared-net
+      - traefik.http.routers.flowmon.entrypoints=websecure
+      - traefik.http.routers.flowmon.rule=Host(`flowmon.tunas-iot.com`)
+      - traefik.http.routers.flowmon.tls.certresolver=le
+      - traefik.http.services.flowmon.loadbalancer.server.port=80
+
+networks:
+  shared-net:
+    external: true
