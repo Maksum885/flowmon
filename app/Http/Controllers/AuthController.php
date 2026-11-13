@@ -19,11 +19,14 @@ class AuthController extends Controller
         $credentials = $request->validate([
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
+        ], [
+            'username.required' => 'Please enter your username.',
+            'password.required' => 'Please enter your password.',
         ]);
 
         if (!Auth::attempt($credentials)) {
             return back()
-                ->withErrors(['username' => 'Nama pengguna atau kata sandi salah.'])
+                ->withErrors(['username' => 'Incorrect username or password.'])
                 ->onlyInput('username');
         }
 

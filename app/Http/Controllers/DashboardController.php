@@ -6,6 +6,7 @@ use App\Models\Alert;
 use App\Models\Reading;
 use App\Models\UsageWindow;
 use App\Services\WindowService;
+use App\Support\Display;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -29,8 +30,13 @@ class DashboardController extends Controller
         }
         $elapsed = max(0, min(86400, $now->timestamp - $start->timestamp));
         $progress = (int) round($elapsed / 864);
-        $elapsedText = intdiv($elapsed, 3600) . ' j ' . intdiv($elapsed % 3600, 60) . ' m dari 24 j';
-        $windowEndLabel = $end->copy()->locale('id')->translatedFormat('j M H:i');
+        $elapsedText = intdiv($elapsed, 3600) . ' h ' . intdiv($elapsed % 3600, 60) . ' min of 24 h';
+        $endDay = match (true) {
+            $end->isSameDay($now) => 'today',
+            $end->isSameDay($now->copy()->addDay()) => 'tomorrow',
+            default => $end->format('j M'),
+        };
+        $windowEndLabel = 'Ends ' . $endDay . ' ' . $end->format('H:i');
 
         // Jendela terakhir yang sudah dihitung
         $done = UsageWindow::orderByDesc('window_start_at')->first();
@@ -38,12 +44,7 @@ class DashboardController extends Controller
         // Umur data terakhir
         $age = $last ? max(0, now()->timestamp - $last->measured_at->timestamp) : null;
         $online = $age !== null && $age <= 300;
-        $ageText = match (true) {
-            $age === null => 'belum ada data',
-            $age < 120 => $age . ' detik lalu',
-            $age < 7200 => intdiv($age, 60) . ' menit lalu',
-            default => intdiv($age, 3600) . ' jam lalu',
-        };
+        $ageText = Display::ago($age);
 
         // Kesehatan meter
         $healthOk = $last
@@ -71,7 +72,7 @@ class DashboardController extends Controller
         $yTicks = [];
         for ($i = 0; $i <= 4; $i++) {
             $v = $max * $i / 4;
-            $yTicks[] = ['label' => (string) round($v), 'y' => round($y((float) $v), 1)];
+            $yTicks[] = ['label' => number_format($v), 'y' => round($y((float) $v), 1)];
         }
         $xTicks = [];
         for ($i = 0; $i <= 4; $i++) {
@@ -88,7 +89,7 @@ class DashboardController extends Controller
         // Alert aktif: belum dilihat atau masih berlangsung
         $alertQuery = Alert::where(fn($q) => $q->whereNull('closed_at')->orWhereNull('seen_at'));
         $alertTotal = (clone $alertQuery)->count();
-        $alerts = $alertQuery->with('rule')->orderByDesc('opened_at')->limit(3)->get();
+        $alerts = $alertQuery->with(['rule', 'window'])->orderByDesc('opened_at')->limit(3)->get();
 
         return view('ringkasan', compact(
             'tz',

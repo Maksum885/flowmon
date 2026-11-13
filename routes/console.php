@@ -9,4 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('flowmon:recalc')->hourly();
-Schedule::command('flowmon:check-alerts')->everyMinute();
+Schedule::command('flowmon:check-alerts')->everyMinute()->withoutOverlapping();

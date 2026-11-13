@@ -1,70 +1,102 @@
-@extends('layouts.app', ['title' => 'Pemakaian 09:00'])
+@extends('layouts.app', ['title' => 'Daily Usage'])
+@use('App\Support\Display', 'D')
 @php
-    $fmt = fn ($v, $d = 1) => $v === null ? '—' : number_format((float) $v, $d, ',', '.');
-    $qual = [
-        'complete' => ['ok', 'Data lengkap'],
-        'gap' => ['warn', 'Ada celah'],
-        'mismatch' => ['bad', 'Tidak cocok'],
-        'no_data' => ['bad', 'Tidak ada data'],
-    ];
-    $fd = fn ($d) => $d->copy()->setTimezone($tz)->locale('id')->translatedFormat('D, j M Y H:i');
+    $fd = fn ($d) => D::dateTime($d);
+    $enDate = fn (?string $ymd) => $ymd && preg_match('/^\d{4}-\d{2}-\d{2}$/', $ymd)
+        ? \Carbon\Carbon::createFromFormat('Y-m-d', $ymd)->format('D, j M Y') : '';
 @endphp
 @section('content')
 <div class="head">
     <div>
-        <h1>Pemakaian 09:00</h1>
-        <div class="sub">Volume = (POS akhir − POS awal) − (NEG akhir − NEG awal), dihitung dari riwayat data.</div>
+        <h1>Daily Usage</h1>
+        <div class="sub">Each day runs {{ $windowStart }} – {{ $windowStart }} the next day.</div>
     </div>
-    <div style="display:flex;gap:8px">
-        <a class="btn {{ $tab === 'jendela' ? '' : 'sec' }}" href="{{ route('pemakaian') }}">Per jendela</a>
-        <a class="btn {{ $tab === 'rentang' ? '' : 'sec' }}" href="{{ route('pemakaian', ['tab' => 'rentang']) }}">Rentang bebas</a>
-    </div>
+    <nav class="seg" aria-label="View">
+        <a @class(['on' => $tab === 'jendela']) href="{{ route('pemakaian') }}" @if ($tab === 'jendela') aria-current="page" @endif>By day</a>
+        <a @class(['on' => $tab === 'rentang']) href="{{ route('pemakaian', ['tab' => 'rentang']) }}" @if ($tab === 'rentang') aria-current="page" @endif>Custom range</a>
+    </nav>
 </div>
 
 @if ($tab === 'jendela')
-    <div class="card" style="margin-bottom:16px;overflow-x:auto">
+    <div class="card" style="margin-bottom:16px">
+        <div class="tbl-wrap">
         <table class="tbl">
-            <thead><tr><th>Mulai</th><th>Selesai</th><th style="text-align:right">Volume (m³)</th><th>Kualitas</th></tr></thead>
+            <thead><tr><th scope="col">Start</th><th scope="col">End</th><th scope="col" class="r">Volume (m³)</th><th scope="col">Status</th></tr></thead>
             <tbody>
             @forelse ($windows as $w)
+                @php [$qc, $ql, $qt] = D::quality($w->quality); @endphp
                 <tr>
                     <td>{{ $fd($w->window_start_at) }}</td>
                     <td>{{ $fd($w->window_end_at) }}</td>
-                    <td class="num" style="text-align:right">{{ $fmt($w->volume_m3, 1) }}</td>
-                    <td><span class="pill {{ $qual[$w->quality][0] ?? 'info' }}">{{ $qual[$w->quality][1] ?? $w->quality }}</span></td>
+                    <td class="num r">{{ D::volume($w->volume_m3, false) }}</td>
+                    <td><span class="pill {{ $qc }}" @if ($qt) title="{{ $qt }}" @endif>{{ $ql }}</span>@if ($qt)<span class="sr-only"> – {{ $qt }}</span>@endif</td>
                 </tr>
             @empty
-                <tr><td colspan="4" style="color:#9CBCCB">Belum ada jendela. Jalankan <code>php artisan flowmon:recalc</code>.</td></tr>
+                <tr><td colspan="4" class="empty">No completed days yet. The first day appears here after it ends.</td></tr>
             @endforelse
             </tbody>
         </table>
-        <div style="display:flex;gap:10px;margin-top:14px">
-            @if ($windows->previousPageUrl())<a class="btn sec" href="{{ $windows->previousPageUrl() }}">← Lebih baru</a>@endif
-            @if ($windows->nextPageUrl())<a class="btn sec" href="{{ $windows->nextPageUrl() }}">Lebih lama →</a>@endif
         </div>
+        @if ($windows->previousPageUrl() || $windows->nextPageUrl())
+            <div class="pager">
+                @if ($windows->previousPageUrl())<a class="btn sec sm" href="{{ $windows->previousPageUrl() }}">← Newer</a>@endif
+                <span class="muted">Page {{ $windows->currentPage() }}</span>
+                @if ($windows->nextPageUrl())<a class="btn sec sm" href="{{ $windows->nextPageUrl() }}">Older →</a>@endif
+            </div>
+        @endif
     </div>
 
-    <form class="card" method="GET" action="{{ route('pemakaian.export') }}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Ekspor dari tanggal</label><input type="date" name="xf" value="{{ $exportFrom }}" required></div>
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Sampai tanggal</label><input type="date" name="xt" value="{{ $exportTo }}" required></div>
-        <button class="btn" type="submit">Unduh CSV (Excel)</button>
+    <form class="card" method="GET" action="{{ route('pemakaian.export') }}">
+        <div class="lbl" style="margin-bottom:12px">Export to Excel (CSV)</div>
+        <div class="form-row">
+            <div class="field">
+                <label for="xf">From</label>
+                <input id="xf" type="date" name="xf" value="{{ old('xf', $exportFrom) }}" placeholder="YYYY-MM-DD" required data-date-hint="xf-hint">
+                <span class="hint" id="xf-hint">{{ $enDate(old('xf', $exportFrom)) }}</span>
+            </div>
+            <div class="field">
+                <label for="xt">To</label>
+                <input id="xt" type="date" name="xt" value="{{ old('xt', $exportTo) }}" placeholder="YYYY-MM-DD" required data-date-hint="xt-hint">
+                <span class="hint" id="xt-hint">{{ $enDate(old('xt', $exportTo)) }}</span>
+            </div>
+            <div style="padding-bottom:24px"><button class="btn" type="submit">Download CSV</button></div>
+        </div>
+        @if ($errors->has('xf') || $errors->has('xt'))
+            <div class="err" role="alert">{{ $errors->first('xf') ?: $errors->first('xt') }}</div>
+        @endif
     </form>
+    <script>
+    (function () {
+        var fmt = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        document.querySelectorAll('[data-date-hint]').forEach(function (input) {
+            var hint = document.getElementById(input.getAttribute('data-date-hint'));
+            input.addEventListener('change', function () {
+                var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.value);
+                hint.textContent = m ? fmt.format(new Date(+m[1], m[2] - 1, +m[3])).replace(/^(\w+) /, '$1, ') : '';
+            });
+        });
+    })();
+    </script>
 @else
-    <form class="card" method="GET" action="{{ route('pemakaian') }}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px">
+    <form class="card" method="GET" action="{{ route('pemakaian') }}" style="margin-bottom:16px">
         <input type="hidden" name="tab" value="rentang">
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Dari</label><input type="datetime-local" name="from" value="{{ $from }}" required></div>
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Sampai</label><input type="datetime-local" name="to" value="{{ $to }}" required></div>
-        <button class="btn" type="submit">Hitung</button>
+        <div class="form-row">
+            <div class="field"><label for="from">From</label><input id="from" type="datetime-local" name="from" value="{{ $from }}" required></div>
+            <div class="field"><label for="to">To</label><input id="to" type="datetime-local" name="to" value="{{ $to }}" required></div>
+            <button class="btn" type="submit">Calculate</button>
+        </div>
+        <span class="hint">Up to 31 days. Times are local (24-hour).</span>
     </form>
 
     @if ($error)
-        <div class="pill bad" style="white-space:normal">{{ $error }}</div>
+        <div class="card"><div class="err" role="alert" style="margin:0">{{ $error }}</div></div>
     @elseif ($result)
+        @php [$qc, $ql, $qt] = D::quality($result['quality'] ?? null); @endphp
         <div class="card">
-            <div class="lbl">Volume {{ $fd($a) }} → {{ $fd($b) }}</div>
-            <div class="num" style="font-size:44px;margin:8px 0 2px">{{ $fmt($result['volume_m3'] ?? null, 1) }} <span style="font-size:20px">m³</span></div>
+            <div class="lbl">Volume {{ $fd($a) }} – {{ $fd($b) }}</div>
+            <div class="num big">{{ D::volume($result['volume_m3'] ?? null, false) }} <small>m³</small></div>
             @if (!empty($result['quality']))
-                <span class="pill {{ $qual[$result['quality']][0] ?? 'info' }}">{{ $qual[$result['quality']][1] ?? $result['quality'] }}</span>
+                <span class="pill {{ $qc }}" @if ($qt) title="{{ $qt }}" @endif>{{ $ql }}</span>
             @endif
         </div>
     @endif

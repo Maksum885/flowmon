@@ -15,6 +15,9 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // Site name shown on the login page and under the product name in the sidebar
+    'location_name' => env('APP_LOCATION_NAME', 'Flow Meter Site'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment
@@ -66,6 +69,9 @@ return [
     */
 
     'timezone' => 'UTC',
+
+    // Timezone used for everything shown on screen and in exports
+    'display_timezone' => 'Asia/Jakarta',
 
     /*
     |--------------------------------------------------------------------------

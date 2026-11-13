@@ -1,12 +1,12 @@
-@extends('layouts.app', ['title' => 'Grafik Aliran'])
+@extends('layouts.app', ['title' => 'Flow Charts'])
 @section('content')
 <div class="head">
-    <div><h1>Grafik Aliran</h1><div class="sub">Rata-rata per {{ $cfg['bucket'] === '5 minutes' ? '5 menit' : ($cfg['bucket'] === '1 hour' ? '1 jam' : '3 jam') }}. Garis putus-putus pada data berarti ada celah.</div></div>
-    <div style="display:flex;gap:8px">
+    <div><h1>Flow Charts</h1><div class="sub">Averaged every {{ $cfg['every'] }}.</div></div>
+    <nav class="seg" aria-label="Time range">
         @foreach ($ranges as $k => $label)
-            <a class="btn {{ $key === $k ? '' : 'sec' }}" href="{{ route('grafik', ['r' => $k]) }}">{{ $label }}</a>
+            <a @class(['on' => $key === $k]) href="{{ route('grafik', ['r' => $k]) }}" @if ($key === $k) aria-current="page" @endif>{{ $label }}</a>
         @endforeach
-    </div>
+    </nav>
 </div>
 <div class="grid2">
     @foreach ($charts as $c)

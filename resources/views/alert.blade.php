@@ -1,42 +1,50 @@
-@extends('layouts.app', ['title' => 'Alert'])
+@extends('layouts.app', ['title' => 'Alerts'])
+@use('App\Support\Display', 'D')
 @section('content')
 <div class="head">
-    <div><h1>Alert</h1><div class="sub">Peringatan otomatis dari aturan di Pengaturan. Dicek setiap menit.</div></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn {{ $tab === 'aktif' ? '' : 'sec' }}" href="{{ route('alert') }}">Perlu perhatian</a>
-        <a class="btn {{ $tab === 'riwayat' ? '' : 'sec' }}" href="{{ route('alert', ['tab' => 'riwayat']) }}">Riwayat</a>
-        <form method="POST" action="{{ route('alert.seenall') }}">@csrf<button class="btn sec" type="submit">Tandai semua dilihat</button></form>
+    <div><h1>Alerts</h1></div>
+    <div class="actions">
+        <nav class="seg" aria-label="Alert list">
+            <a @class(['on' => $tab === 'aktif']) href="{{ route('alert') }}" @if ($tab === 'aktif') aria-current="page" @endif>Needs attention</a>
+            <a @class(['on' => $tab === 'riwayat']) href="{{ route('alert', ['tab' => 'riwayat']) }}" @if ($tab === 'riwayat') aria-current="page" @endif>History</a>
+        </nav>
+        @if ($unseen > 0)
+            <form method="POST" action="{{ route('alert.seenall') }}">@csrf<button class="btn sec" type="submit">Mark all as seen</button></form>
+        @endif
     </div>
 </div>
-<div class="card" style="overflow-x:auto">
+<div class="card">
+    <div class="tbl-wrap">
     <table class="tbl">
-        <thead><tr><th>Alert</th><th>Mulai</th><th>Selesai</th><th>Status</th><th>Rincian</th><th></th></tr></thead>
+        <thead><tr><th scope="col">Alert</th><th scope="col">When</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
         <tbody>
         @forelse ($alerts as $a)
-            @php
-                $d = is_array($a->detail) ? $a->detail : (json_decode((string) $a->detail, true) ?: []);
-                $txt = collect($d)->map(fn ($v, $k) => $k.': '.(is_scalar($v) ? $v : json_encode($v)))->implode(' · ');
-            @endphp
+            @php [$sc, $sl] = D::alertStatus($a); @endphp
             <tr>
-                <td><b>{{ $a->rule->name }}</b></td>
-                <td>{{ $a->opened_at->copy()->setTimezone($tz)->format('d/m H:i') }}</td>
-                <td>{{ $a->closed_at ? $a->closed_at->copy()->setTimezone($tz)->format('d/m H:i') : '—' }}</td>
-                <td>
-                    @if (!$a->closed_at)<span class="pill bad">Berlangsung</span>
-                    @elseif (!$a->seen_at)<span class="pill warn">Selesai, belum dilihat</span>
-                    @else<span class="pill ok">Selesai</span>@endif
+                <td style="white-space:normal;min-width:260px">
+                    <b>{{ $a->rule?->name ?? 'Alert' }}</b>
+                    <div class="muted" style="font-size:13px;margin-top:2px">{{ D::alertDetail($a) }}</div>
                 </td>
-                <td style="white-space:normal;color:#9CBCCB;font-size:13px;max-width:360px">{{ $txt ?: '—' }}</td>
-                <td>@if (!$a->seen_at)<form method="POST" action="{{ route('alert.seen', $a) }}">@csrf<button class="btn sec" style="min-height:34px;padding:0 14px" type="submit">Dilihat</button></form>@endif</td>
+                <td>{{ D::alertDuration($a) }}</td>
+                <td><span class="pill {{ $sc }}">{{ $sl }}</span></td>
+                <td class="r">
+                    @if (!$a->seen_at)
+                        <form method="POST" action="{{ route('alert.seen', $a) }}">@csrf<button class="btn sec sm" type="submit">Mark as seen</button></form>
+                    @endif
+                </td>
             </tr>
         @empty
-            <tr><td colspan="6" style="color:#9CBCCB">Tidak ada alert.</td></tr>
+            <tr><td colspan="4" class="empty">{{ $tab === 'aktif' ? 'Nothing needs attention. Everything looks fine.' : 'No alerts yet.' }}</td></tr>
         @endforelse
         </tbody>
     </table>
-    <div style="display:flex;gap:10px;margin-top:14px">
-        @if ($alerts->previousPageUrl())<a class="btn sec" href="{{ $alerts->previousPageUrl() }}">← Lebih baru</a>@endif
-        @if ($alerts->nextPageUrl())<a class="btn sec" href="{{ $alerts->nextPageUrl() }}">Lebih lama →</a>@endif
     </div>
+    @if ($alerts->previousPageUrl() || $alerts->nextPageUrl())
+        <div class="pager">
+            @if ($alerts->previousPageUrl())<a class="btn sec sm" href="{{ $alerts->previousPageUrl() }}">← Newer</a>@endif
+            <span class="muted">Page {{ $alerts->currentPage() }}</span>
+            @if ($alerts->nextPageUrl())<a class="btn sec sm" href="{{ $alerts->nextPageUrl() }}">Older →</a>@endif
+        </div>
+    @endif
 </div>
 @endsection

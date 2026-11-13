@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\AlertRuleCatalog;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -10,23 +11,23 @@ use Illuminate\Support\Facades\Schema;
 class InitApp extends Command
 {
     protected $signature = 'flowmon:init {--username=admin}';
-    protected $description = 'Isi data awal produksi: pengguna, aturan alert, pengaturan';
+    protected $description = 'Seed production data: user, alert rules, settings';
 
     public function handle(): int
     {
         $u = $this->option('username');
 
         if (DB::table('users')->where('username', $u)->exists()) {
-            $this->info("Pengguna {$u} sudah ada, dilewati.");
+            $this->info("User {$u} already exists, skipped.");
         } else {
-            $p = (string) $this->secret("Kata sandi untuk {$u} (min. 10 karakter)");
+            $p = (string) $this->secret("Password for {$u} (at least 10 characters)");
             if (strlen($p) < 10) {
-                $this->error('Kata sandi terlalu pendek.');
+                $this->error('Password is too short.');
 
                 return self::FAILURE;
             }
-            if ($p !== (string) $this->secret('Ulangi kata sandi')) {
-                $this->error('Konfirmasi tidak sama.');
+            if ($p !== (string) $this->secret('Repeat password')) {
+                $this->error('Passwords do not match.');
 
                 return self::FAILURE;
             }
@@ -41,19 +42,19 @@ class InitApp extends Command
                 }
             }
             DB::table('users')->insert($row);
-            $this->info("Pengguna {$u} dibuat.");
+            $this->info("User {$u} created.");
         }
 
         $rules = [
-            ['offline', 'Meter offline', true, 1, ['menit' => 5]],
-            ['error_code', 'Kode error meter', false, 1, []],
-            ['signal_q', 'Kualitas sinyal rendah', true, 6, ['batas' => 50]],
-            ['weak_signal', 'Sinyal hulu/hilir lemah', false, 6, ['batas' => null]],
-            ['time_ratio', 'Time ratio di luar rentang', true, 6, ['min' => 95, 'max' => 105]],
-            ['backflow', 'Aliran balik', true, 1, ['neg_naik_m3' => 0.1]],
-            ['zero_flow', 'Aliran nol terlalu lama', true, 1, ['menit' => 30]],
-            ['incomplete_window', 'Jendela data tidak lengkap', true, 1, []],
-            ['clock_drift', 'Jam meter melenceng', false, 1, ['detik' => 60]],
+            ['offline', AlertRuleCatalog::name('offline'), true, 1, ['menit' => 5]],
+            ['error_code', AlertRuleCatalog::name('error_code'), false, 1, []],
+            ['signal_q', AlertRuleCatalog::name('signal_q'), true, 6, ['batas' => 50]],
+            ['weak_signal', AlertRuleCatalog::name('weak_signal'), false, 6, ['batas' => null]],
+            ['time_ratio', AlertRuleCatalog::name('time_ratio'), true, 6, ['min' => 95, 'max' => 105]],
+            ['backflow', AlertRuleCatalog::name('backflow'), true, 1, ['neg_naik_m3' => 0.1]],
+            ['zero_flow', AlertRuleCatalog::name('zero_flow'), true, 1, ['menit' => 30]],
+            ['incomplete_window', AlertRuleCatalog::name('incomplete_window'), true, 1, []],
+            ['clock_drift', AlertRuleCatalog::name('clock_drift'), false, 1, ['detik' => 60]],
         ];
         foreach ($rules as [$code, $name, $on, $n, $params]) {
             DB::table('alert_rules')->insertOrIgnore([
@@ -69,7 +70,7 @@ class InitApp extends Command
             DB::table('settings')->insertOrIgnore(['key' => $k, 'value' => json_encode($v)]);
         }
 
-        $this->info('Data awal siap.');
+        $this->info('Initial data ready.');
 
         return self::SUCCESS;
     }
