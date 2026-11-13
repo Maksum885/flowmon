@@ -150,29 +150,41 @@ class AlertChecker
         return $p[$key] ?? $default;
     }
 
-    private function scope($q, ?int $windowId)
+    /**
+     * Open alerts of this rule for the same subject: the same usage window
+     * (matched by window start, so one alert per rule + day) or, for rules
+     * that are not tied to a window, the single window-less alert.
+     */
+    private function openFor(AlertRule $r, ?int $windowId)
     {
-        return $windowId ? $q->where('window_id', $windowId) : $q->whereNull('window_id');
+        $q = DB::table('alerts')->where('rule_id', $r->id)->whereNull('closed_at');
+        if (!$windowId) {
+            return $q->whereNull('window_id');
+        }
+        $start = DB::table('usage_windows')->where('id', $windowId)->value('window_start_at');
+        if ($start === null) {
+            return $q->where('window_id', $windowId);
+        }
+
+        return $q->whereIn('window_id', DB::table('usage_windows')->select('id')->where('window_start_at', $start));
     }
 
     private function open(AlertRule $r, ?int $windowId, array $detail): void
     {
-        $q = DB::table('alerts')->where('rule_id', $r->id)->whereNull('closed_at');
-        if ($this->scope($q, $windowId)->exists()) {
+        if ($this->openFor($r, $windowId)->exists()) {
             return;
         }
-        DB::table('alerts')->insert([
+        // insertOrIgnore: an overlapping run that already opened it hits the unique index and is skipped
+        $this->opened += DB::table('alerts')->insertOrIgnore([
             'rule_id' => $r->id,
             'window_id' => $windowId,
             'opened_at' => now(),
             'detail' => json_encode($detail),
         ]);
-        $this->opened++;
     }
 
     private function close(AlertRule $r, ?int $windowId): void
     {
-        $q = DB::table('alerts')->where('rule_id', $r->id)->whereNull('closed_at');
-        $this->closed += $this->scope($q, $windowId)->update(['closed_at' => now()]);
+        $this->closed += $this->openFor($r, $windowId)->update(['closed_at' => now()]);
     }
 }

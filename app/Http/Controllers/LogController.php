@@ -18,18 +18,29 @@ class LogController extends Controller
         $tanggal = $r->query('tanggal');
         $status = $r->query('status');
 
-        $rows = null;
+        $day = null;
+        if ($tanggal) {
+            try {
+                $day = Carbon::createFromFormat('Y-m-d', (string) $tanggal, $tz);
+            } catch (\Throwable) {
+                $tanggal = null;
+            }
+        }
+        $range = $day ? [$day->copy()->startOfDay()->utc(), $day->copy()->endOfDay()->utc()] : null;
+
         if ($tab === 'pembacaan') {
             $q = Reading::orderByDesc('measured_at');
-            if ($tanggal) {
-                $d = Carbon::parse($tanggal, $tz);
-                $q->whereBetween('measured_at', [$d->copy()->startOfDay(), $d->copy()->endOfDay()]);
+            if ($range) {
+                $q->whereBetween('measured_at', $range);
             }
             $rows = $q->simplePaginate(50)->withQueryString();
         } else {
             $q = MqttMessage::orderByDesc('id');
             if ($status) {
                 $q->where('status', $status);
+            }
+            if ($range) {
+                $q->whereBetween('received_at', $range);
             }
             $rows = $q->simplePaginate(30)->withQueryString();
         }

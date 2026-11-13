@@ -23,32 +23,82 @@ class MessageParser
         'net_today',
     ];
 
+    /** Nama titik bawaan dari R40A (kolom => nama titik di pesan). */
+    public const BLIIOT_DEFAULT = [
+        'flow_rate' => 'REG21000',
+        'velocity' => 'REG21002',
+        'pos_int' => 'REG21004',
+        'pos_frac' => 'REG21006',
+        'neg_int' => 'REG21008',
+        'neg_frac' => 'REG21010',
+        'time_ratio' => 'REG21012',
+        'step_q' => 'REG20001',
+        'error_code' => 'REG20002',
+        'signal_up' => 'REG20003',
+        'signal_down' => 'REG20004',
+    ];
+
+    /** Alasan pesan terakhir diabaikan (diisi saat parse() mengembalikan null). */
+    public ?string $ignoreReason = null;
+
     /**
-     * @param array<string,string> $mapping nama kolom => jalur di JSON (boleh bertitik, mis. "data.flow")
+     * @param array<string,string> $mapping nama kolom => jalur di JSON (boleh bertitik, mis. "data.flow").
+     *        Untuk pesan R40A, nilainya nama titik (mis. "REG21000"). Akhiran "/10" membagi nilai dengan 10.
      * @return array|null null bila pesan valid tetapi tidak berisi nilai yang dikenali
      */
     public function parse(string $payload, array $mapping, Carbon $receivedAt): ?array
     {
+        $this->ignoreReason = null;
+
         $data = json_decode($payload, true);
         if (!is_array($data)) {
-            throw new InvalidArgumentException('Isi pesan bukan JSON yang valid');
+            throw new InvalidArgumentException('Message is not valid JSON');
+        }
+
+        // Format R40A: {"sensorDatas":[{"flag":"REG21000","value":"1.5","status":"0"}, ...],"time":"..."}
+        $bliiot = isset($data['sensorDatas']) && is_array($data['sensorDatas']);
+        if ($bliiot) {
+            $data = $this->flatten($data);
         }
 
         $attrs = [];
         $found = false;
         foreach (array_merge(self::INTS, self::FLOATS) as $col) {
-            $v = Arr::get($data, $mapping[$col] ?? $col);
+            [$path, $div] = $this->target($mapping[$col] ?? ($bliiot ? (self::BLIIOT_DEFAULT[$col] ?? $col) : $col));
+            $v = Arr::get($data, $path);
             if ($v === null || $v === '') {
                 $attrs[$col] = null;
                 continue;
             }
             if (!is_numeric($v)) {
-                throw new InvalidArgumentException("Nilai {$col} bukan angka");
+                throw new InvalidArgumentException("Value for {$col} is not a number");
             }
-            $attrs[$col] = in_array($col, self::INTS, true) ? (int) round((float) $v) : (float) $v;
+            $v = (float) $v;
+            if ($div !== 1.0) {
+                $v /= $div;
+            }
+            $attrs[$col] = in_array($col, self::INTS, true) ? (int) round($v) : $v;
             $found = true;
         }
+
+        // Register 0092: byte atas = langkah kerja, byte bawah = kualitas sinyal
+        [$path] = $this->target($mapping['step_q'] ?? ($bliiot ? self::BLIIOT_DEFAULT['step_q'] : 'step_q'));
+        $raw = Arr::get($data, $path);
+        if (is_numeric($raw) && $attrs['working_step'] === null && $attrs['signal_quality'] === null) {
+            $n = (int) round((float) $raw);
+            $attrs['working_step'] = ($n >> 8) & 0xFF;
+            $attrs['signal_quality'] = $n & 0xFF;
+            $found = true;
+        }
+
         if (!$found) {
+            return null;
+        }
+
+        // R40A tetap mengirim nol bila meter tidak menjawab; semua nol berarti bukan pembacaan nyata
+        if ($bliiot && collect($attrs)->filter(fn ($x) => $x !== null)->every(fn ($x) => $x == 0)) {
+            $this->ignoreReason = 'Meter not responding (all values zero)';
+
             return null;
         }
 
@@ -56,6 +106,36 @@ class MessageParser
         $attrs['measured_at'] = $this->timestamp($rawTs) ?? $receivedAt->copy()->utc()->startOfSecond();
 
         return $attrs;
+    }
+
+    /** Ubah daftar sensorDatas menjadi peta nama titik => nilai. Titik berstatus bukan "0" dibuang. */
+    private function flatten(array $data): array
+    {
+        $flat = [];
+        foreach ($data['sensorDatas'] as $item) {
+            if (!is_array($item) || !isset($item['flag']) || !array_key_exists('value', $item)) {
+                continue;
+            }
+            if (isset($item['status']) && (string) $item['status'] !== '0') {
+                continue;
+            }
+            $flat[(string) $item['flag']] = $item['value'];
+        }
+        if (isset($data['time'])) {
+            $flat['measured_at'] = $data['time'];
+        }
+
+        return $flat;
+    }
+
+    /** Pisahkan "REG20003/10" menjadi [jalur, pembagi]. */
+    private function target(string $spec): array
+    {
+        if (preg_match('/^(.+)\/(\d+(?:\.\d+)?)$/', $spec, $m) && (float) $m[2] > 0) {
+            return [$m[1], (float) $m[2]];
+        }
+
+        return [$spec, 1.0];
     }
 
     private function timestamp(mixed $v): ?Carbon
@@ -75,9 +155,9 @@ class MessageParser
             try {
                 return Carbon::parse($v, 'UTC')->utc()->startOfSecond();
             } catch (\Throwable) {
-                throw new InvalidArgumentException('Format waktu pembacaan tidak dikenali');
+                throw new InvalidArgumentException('Reading time format not recognised');
             }
         }
-        throw new InvalidArgumentException('Format waktu pembacaan tidak dikenali');
+        throw new InvalidArgumentException('Reading time format not recognised');
     }
 }

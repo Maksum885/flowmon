@@ -38,10 +38,10 @@ class MessageReceiver
     {
         try {
             $mapping = (array) Setting::read('mqtt_mapping', []);
-            $attrs = $this->parser->parse($message->payload, $mapping, $message->received_at);
+            $attrs = $this->parser->parse($message->payload, $mapping, Carbon::parse($message->received_at));
 
             if ($attrs === null) {
-                $this->finish($message, 'diabaikan', 'Tidak ada nilai pembacaan yang dikenali');
+                $this->finish($message, 'diabaikan', $this->parser->ignoreReason ?? 'No meter values found in the message');
 
                 return;
             }
@@ -51,7 +51,7 @@ class MessageReceiver
 
             $inserted = Reading::insertOrIgnore([$attrs]);
             if ($inserted === 0) {
-                $this->finish($message, 'diabaikan', 'Pembacaan dengan waktu yang sama sudah ada');
+                $this->finish($message, 'diabaikan', 'Duplicate: a reading with the same time already exists');
 
                 return;
             }

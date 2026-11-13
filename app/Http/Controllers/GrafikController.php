@@ -12,9 +12,9 @@ use Illuminate\View\View;
 class GrafikController extends Controller
 {
     private const RANGES = [
-        '24j' => ['label' => '24 jam', 'sec' => 86400, 'bucket' => '5 minutes', 'bsec' => 300, 'fmt' => 'H:i'],
-        '7h' => ['label' => '7 hari', 'sec' => 604800, 'bucket' => '1 hour', 'bsec' => 3600, 'fmt' => 'd/m'],
-        '30h' => ['label' => '30 hari', 'sec' => 2592000, 'bucket' => '3 hours', 'bsec' => 10800, 'fmt' => 'd/m'],
+        '24j' => ['label' => '24 hours', 'every' => '5 minutes', 'sec' => 86400, 'bucket' => '5 minutes', 'bsec' => 300, 'fmt' => 'H:i'],
+        '7h' => ['label' => '7 days', 'every' => 'hour', 'sec' => 604800, 'bucket' => '1 hour', 'bsec' => 3600, 'fmt' => 'j M'],
+        '30h' => ['label' => '30 days', 'every' => '3 hours', 'sec' => 2592000, 'bucket' => '3 hours', 'bsec' => 10800, 'fmt' => 'j M'],
     ];
 
     public function __invoke(Request $r, WindowService $svc): View
@@ -51,17 +51,19 @@ class GrafikController extends Controller
         $tr = $series('t');
         $trVals = array_column($tr, 1);
         $charts = [
-            ['title' => 'Laju aliran (m³/jam)', 'points' => $series('f'), 'color' => '#38BDF8', 'dec' => 0, 'ymin' => 0, 'ymax' => null, 'lines' => []],
-            ['title' => 'Kecepatan aliran (m/s)', 'points' => $series('v'), 'color' => '#22D3EE', 'dec' => 2, 'ymin' => 0, 'ymax' => null, 'lines' => []],
-            ['title' => 'Kualitas sinyal Q (terendah per interval)', 'points' => $series('q'), 'color' => '#6EE7B7', 'dec' => 0, 'ymin' => 0, 'ymax' => 100, 'lines' => [[$qMin, 'batas alert', '#FBBF24']]],
+            ['title' => 'Flow rate (m³/h)', 'points' => $series('f'), 'color' => '#38BDF8', 'dec' => 0, 'tipdec' => 2, 'unit' => 'm³/h', 'ymin' => 0, 'ymax' => null, 'lines' => []],
+            ['title' => 'Velocity (m/s)', 'points' => $series('v'), 'color' => '#22D3EE', 'dec' => 2, 'tipdec' => 2, 'unit' => 'm/s', 'ymin' => 0, 'ymax' => null, 'lines' => []],
+            ['title' => 'Signal quality (lowest per interval)', 'points' => $series('q'), 'color' => '#6EE7B7', 'dec' => 0, 'tipdec' => 0, 'unit' => '', 'ymin' => 0, 'ymax' => 100, 'lines' => [[$qMin, 'alert limit', '#FBBF24']]],
             [
                 'title' => 'Time ratio (%)',
                 'points' => $tr,
                 'color' => '#A5B4FC',
                 'dec' => 0,
+                'tipdec' => 1,
+                'unit' => '%',
                 'ymin' => floor(min($trVals ?: [$trMin], [$trMin])[0] ?? $trMin) - 5,
                 'ymax' => ceil(max(array_merge($trVals, [$trMax]))) + 5,
-                'lines' => [[$trMin, 'min', '#FBBF24'], [$trMax, 'maks', '#FBBF24']]
+                'lines' => [[$trMin, 'min', '#FBBF24'], [$trMax, 'max', '#FBBF24']]
             ],
         ];
         $ranges = collect(self::RANGES)->map(fn($x) => $x['label'])->all();

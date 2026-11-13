@@ -16,6 +16,27 @@ class ExampleTest extends TestCase
         $this->get('/login')->assertOk();
     }
 
+    public function test_login_page_is_english_and_shows_location_name(): void
+    {
+        config(['app.location_name' => 'Pump Station 3']);
+
+        $this->get('/login')
+            ->assertOk()
+            ->assertSee('<html lang="en">', false)
+            ->assertSee('Sign in')
+            ->assertSee('Pump Station 3')
+            ->assertSee('Show')
+            ->assertDontSee('Masuk')
+            ->assertDontSee('Kata sandi');
+    }
+
+    public function test_login_shows_english_validation_messages(): void
+    {
+        $this->from('/login')->post('/login', [])
+            ->assertRedirect('/login')
+            ->assertSessionHasErrors(['username' => 'Please enter your username.']);
+    }
+
     public function test_pemakaian_butuh_login(): void
     {
         $this->get('/pemakaian')->assertRedirect('/login');

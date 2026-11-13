@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\AlertRule;
+use App\Support\AlertRuleCatalog;
 use App\Models\Reading;
 use App\Models\Setting;
 use App\Models\User;
@@ -21,15 +22,15 @@ class DatabaseSeeder extends Seeder
 
         // Sembilan aturan alert
         $rules = [
-            ['offline', 'Meter offline', true, ['menit' => 5], 1],
-            ['error_code', 'Kode error meter', false, [], 1],
-            ['signal_q', 'Kualitas sinyal (Q) rendah', true, ['batas' => 50], 6],
-            ['weak_signal', 'Sinyal hulu atau hilir lemah', false, ['batas' => null], 6],
-            ['time_ratio', 'Time ratio di luar batas', true, ['min' => 95, 'max' => 105], 6],
-            ['backflow', 'Aliran balik', true, ['neg_naik_m3' => 0.1], 1],
-            ['zero_flow', 'Aliran nol terlalu lama', true, ['menit' => 30], 1],
-            ['incomplete_window', 'Data jendela tidak lengkap', true, [], 1],
-            ['clock_drift', 'Jam meter menyimpang', false, ['detik' => 60], 1],
+            ['offline', AlertRuleCatalog::name('offline'), true, ['menit' => 5], 1],
+            ['error_code', AlertRuleCatalog::name('error_code'), false, [], 1],
+            ['signal_q', AlertRuleCatalog::name('signal_q'), true, ['batas' => 50], 6],
+            ['weak_signal', AlertRuleCatalog::name('weak_signal'), false, ['batas' => null], 6],
+            ['time_ratio', AlertRuleCatalog::name('time_ratio'), true, ['min' => 95, 'max' => 105], 6],
+            ['backflow', AlertRuleCatalog::name('backflow'), true, ['neg_naik_m3' => 0.1], 1],
+            ['zero_flow', AlertRuleCatalog::name('zero_flow'), true, ['menit' => 30], 1],
+            ['incomplete_window', AlertRuleCatalog::name('incomplete_window'), true, [], 1],
+            ['clock_drift', AlertRuleCatalog::name('clock_drift'), false, ['detik' => 60], 1],
         ];
         foreach ($rules as [$code, $name, $enabled, $params, $count]) {
             AlertRule::updateOrCreate(

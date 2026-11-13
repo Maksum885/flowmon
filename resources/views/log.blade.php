@@ -1,65 +1,91 @@
-@extends('layouts.app', ['title' => 'Log Data'])
-@php $f = fn ($v, $d = 2) => $v === null ? '—' : number_format((float) $v, $d, ',', '.'); @endphp
+@extends('layouts.app', ['title' => 'Data Log'])
+@use('App\Support\Display', 'D')
+@php $t = fn ($d) => $d ? D::local($d)->format('j M Y H:i:s') : D::DASH; @endphp
 @section('content')
 <div class="head">
-    <div><h1>Log Data</h1><div class="sub">Pembacaan meter dan pesan MQTT yang masuk.</div></div>
-    <div style="display:flex;gap:8px">
-        <a class="btn {{ $tab === 'pembacaan' ? '' : 'sec' }}" href="{{ route('log') }}">Pembacaan</a>
-        <a class="btn {{ $tab === 'pesan' ? '' : 'sec' }}" href="{{ route('log', ['tab' => 'pesan']) }}">Pesan masuk</a>
-    </div>
+    <div><h1>Data Log</h1></div>
+    <nav class="seg" aria-label="Log type">
+        <a @class(['on' => $tab === 'pembacaan']) href="{{ route('log') }}" @if ($tab === 'pembacaan') aria-current="page" @endif>Readings</a>
+        <a @class(['on' => $tab === 'pesan']) href="{{ route('log', ['tab' => 'pesan']) }}" @if ($tab === 'pesan') aria-current="page" @endif>Incoming messages</a>
+    </nav>
 </div>
 
-<form class="card" method="GET" action="{{ route('log') }}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px">
+<form class="card" method="GET" action="{{ route('log') }}" style="margin-bottom:16px">
     <input type="hidden" name="tab" value="{{ $tab }}">
-    @if ($tab === 'pembacaan')
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Tanggal</label><input type="date" name="tanggal" value="{{ $tanggal }}"></div>
-    @else
-        <div><label style="display:block;font-size:13px;margin-bottom:6px">Status</label>
-            <select name="status">
-                <option value="">Semua</option>
-                @foreach (['baru', 'ok', 'diabaikan', 'gagal'] as $s)<option value="{{ $s }}" @selected($status === $s)>{{ $s }}</option>@endforeach
-            </select></div>
-    @endif
-    <button class="btn" type="submit">Terapkan</button>
+    <div class="form-row">
+        <div class="field"><label for="tanggal">Date</label><input id="tanggal" type="date" name="tanggal" value="{{ $tanggal }}" placeholder="YYYY-MM-DD"></div>
+        @if ($tab === 'pesan')
+            <div class="field"><label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="">All</option>
+                    @foreach (D::MESSAGE_STATUSES as $value => [, $label])<option value="{{ $value }}" @selected($status === $value)>{{ $label }}</option>@endforeach
+                </select>
+            </div>
+        @endif
+        <button class="btn" type="submit">Apply</button>
+        @if ($tanggal || $status)<a class="btn sec" href="{{ route('log', $tab === 'pesan' ? ['tab' => 'pesan'] : []) }}">Reset</a>@endif
+    </div>
 </form>
 
-<div class="card" style="overflow-x:auto">
+<div class="card">
+<div class="tbl-wrap">
 @if ($tab === 'pembacaan')
     <table class="tbl">
-        <thead><tr><th>Waktu</th><th style="text-align:right">Aliran</th><th style="text-align:right">Kecepatan</th><th style="text-align:right">POS</th><th style="text-align:right">NEG</th><th style="text-align:right">Q</th><th style="text-align:right">Time ratio</th><th>Error</th></tr></thead>
+        <thead><tr>
+            <th scope="col">Time</th>
+            <th scope="col" class="r">Flow rate (m³/h)</th>
+            <th scope="col" class="r">Velocity (m/s)</th>
+            <th scope="col" class="r">Total forward (m³)</th>
+            <th scope="col" class="r">Total reverse (m³)</th>
+            <th scope="col" class="r">Signal quality</th>
+            <th scope="col" class="r">Time ratio (%)</th>
+            <th scope="col" class="r">Error code</th>
+        </tr></thead>
         <tbody>
         @forelse ($rows as $r)
             <tr class="num">
-                <td>{{ $r->measured_at->copy()->setTimezone($tz)->format('d/m H:i:s') }}</td>
-                <td style="text-align:right">{{ $f($r->flow_rate) }}</td>
-                <td style="text-align:right">{{ $f($r->velocity) }}</td>
-                <td style="text-align:right">{{ $f($r->pos_total) }}</td>
-                <td style="text-align:right">{{ $f($r->neg_total) }}</td>
-                <td style="text-align:right">{{ $r->signal_quality ?? '—' }}</td>
-                <td style="text-align:right">{{ $f($r->time_ratio, 1) }}</td>
-                <td>{{ $r->error_code ?? '—' }}</td>
+                <td>{{ $t($r->measured_at) }}</td>
+                <td class="r">{{ D::num($r->flow_rate, 2) }}</td>
+                <td class="r">{{ D::num($r->velocity, 2) }}</td>
+                <td class="r">{{ D::num($r->pos_total, 3) }}</td>
+                <td class="r">{{ D::num($r->neg_total, 3) }}</td>
+                <td class="r">{{ D::num($r->signal_quality, 0) }}</td>
+                <td class="r">{{ D::num($r->time_ratio, 1) }}</td>
+                <td class="r">{{ $r->error_code ?? D::DASH }}</td>
             </tr>
         @empty
-            <tr><td colspan="8" style="color:#9CBCCB">Tidak ada pembacaan.</td></tr>
+            <tr><td colspan="8" class="empty">{{ $tanggal ? 'No readings on this date.' : 'No readings yet.' }}</td></tr>
         @endforelse
         </tbody>
     </table>
 @else
-    @php $cols = $rows->isNotEmpty() ? array_keys($rows->first()->getAttributes()) : []; @endphp
     <table class="tbl">
-        <thead><tr>@foreach ($cols as $c)<th>{{ $c }}</th>@endforeach</tr></thead>
+        <thead><tr><th scope="col">Received</th><th scope="col">Status</th><th scope="col">Reason</th><th scope="col">Message</th></tr></thead>
         <tbody>
         @forelse ($rows as $m)
-            <tr>@foreach ($cols as $c)<td style="max-width:420px;overflow:hidden;text-overflow:ellipsis">{{ \Illuminate\Support\Str::limit(is_scalar($m->getAttribute($c)) ? (string) $m->getAttribute($c) : json_encode($m->getAttribute($c)), 90) }}</td>@endforeach</tr>
+            @php [$sc, $sl] = D::messageStatus($m->status); $payload = (string) $m->payload; @endphp
+            <tr>
+                <td class="num">{{ $t($m->received_at) }}</td>
+                <td><span class="pill {{ $sc }}">{{ $sl }}</span></td>
+                <td style="white-space:normal;min-width:200px">{{ D::messageReason($m->error) ?? D::DASH }}</td>
+                <td style="max-width:420px">
+                    <div class="muted" style="font-size:12px">{{ $m->topic }}</div>
+                    <code title="{{ \Illuminate\Support\Str::limit($payload, 2000) }}" style="display:block;overflow:hidden;text-overflow:ellipsis;font-size:12px">{{ \Illuminate\Support\Str::limit($payload, 90) }}</code>
+                </td>
+            </tr>
         @empty
-            <tr><td style="color:#9CBCCB">Tidak ada pesan.</td></tr>
+            <tr><td colspan="4" class="empty">No messages found.</td></tr>
         @endforelse
         </tbody>
     </table>
 @endif
-    <div style="display:flex;gap:10px;margin-top:14px">
-        @if ($rows->previousPageUrl())<a class="btn sec" href="{{ $rows->previousPageUrl() }}">← Lebih baru</a>@endif
-        @if ($rows->nextPageUrl())<a class="btn sec" href="{{ $rows->nextPageUrl() }}">Lebih lama →</a>@endif
-    </div>
+</div>
+    @if ($rows->previousPageUrl() || $rows->nextPageUrl())
+        <div class="pager">
+            @if ($rows->previousPageUrl())<a class="btn sec sm" href="{{ $rows->previousPageUrl() }}">← Newer</a>@endif
+            <span class="muted">Page {{ $rows->currentPage() }}</span>
+            @if ($rows->nextPageUrl())<a class="btn sec sm" href="{{ $rows->nextPageUrl() }}">Older →</a>@endif
+        </div>
+    @endif
 </div>
 @endsection
