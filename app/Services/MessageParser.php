@@ -41,6 +41,8 @@ class MessageParser
     /** Alasan pesan terakhir diabaikan (diisi saat parse() mengembalikan null). */
     public ?string $ignoreReason = null;
 
+    private int $failedPoints = 0;
+
     /**
      * @param array<string,string> $mapping nama kolom => jalur di JSON (boleh bertitik, mis. "data.flow").
      *        Untuk pesan R40A, nilainya nama titik (mis. "REG21000"). Akhiran "/10" membagi nilai dengan 10.
@@ -49,10 +51,11 @@ class MessageParser
     public function parse(string $payload, array $mapping, Carbon $receivedAt): ?array
     {
         $this->ignoreReason = null;
+        $this->failedPoints = 0;
 
         $data = json_decode($payload, true);
         if (!is_array($data)) {
-            throw new InvalidArgumentException('Message is not valid JSON');
+            throw new InvalidArgumentException('Isi pesan bukan JSON yang valid');
         }
 
         // Format R40A: {"sensorDatas":[{"flag":"REG21000","value":"1.5","status":"0"}, ...],"time":"..."}
@@ -71,7 +74,7 @@ class MessageParser
                 continue;
             }
             if (!is_numeric($v)) {
-                throw new InvalidArgumentException("Value for {$col} is not a number");
+                throw new InvalidArgumentException("Nilai {$col} bukan angka");
             }
             $v = (float) $v;
             if ($div !== 1.0) {
@@ -92,12 +95,16 @@ class MessageParser
         }
 
         if (!$found) {
+            if ($bliiot && $this->failedPoints > 0) {
+                $this->ignoreReason = 'Pembacaan gagal: meter tidak merespons';
+            }
+
             return null;
         }
 
         // R40A tetap mengirim nol bila meter tidak menjawab; semua nol berarti bukan pembacaan nyata
-        if ($bliiot && collect($attrs)->filter(fn ($x) => $x !== null)->every(fn ($x) => $x == 0)) {
-            $this->ignoreReason = 'Meter not responding (all values zero)';
+        if ($bliiot && collect($attrs)->filter(fn($x) => $x !== null)->every(fn($x) => $x == 0)) {
+            $this->ignoreReason = 'Semua nilai nol: meter kemungkinan tidak merespons';
 
             return null;
         }
@@ -108,7 +115,7 @@ class MessageParser
         return $attrs;
     }
 
-    /** Ubah daftar sensorDatas menjadi peta nama titik => nilai. Titik berstatus bukan "0" dibuang. */
+    /** Ubah daftar sensorDatas menjadi peta nama titik => nilai. Titik berstatus "0" (pembacaan gagal) dibuang. */
     private function flatten(array $data): array
     {
         $flat = [];
@@ -116,7 +123,9 @@ class MessageParser
             if (!is_array($item) || !isset($item['flag']) || !array_key_exists('value', $item)) {
                 continue;
             }
-            if (isset($item['status']) && (string) $item['status'] !== '0') {
+            if (isset($item['status']) && (string) $item['status'] === '0') {
+                $this->failedPoints++;
+
                 continue;
             }
             $flat[(string) $item['flag']] = $item['value'];
@@ -155,9 +164,9 @@ class MessageParser
             try {
                 return Carbon::parse($v, 'UTC')->utc()->startOfSecond();
             } catch (\Throwable) {
-                throw new InvalidArgumentException('Reading time format not recognised');
+                throw new InvalidArgumentException('Format waktu pembacaan tidak dikenali');
             }
         }
-        throw new InvalidArgumentException('Reading time format not recognised');
+        throw new InvalidArgumentException('Format waktu pembacaan tidak dikenali');
     }
 }

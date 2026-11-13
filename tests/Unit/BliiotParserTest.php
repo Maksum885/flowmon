@@ -13,7 +13,7 @@ class BliiotParserTest extends TestCase
     {
         $items = [];
         foreach ($nilai as $flag => $v) {
-            $items[] = ['value' => (string) $v, 'flag' => $flag, 'status' => '0'];
+            $items[] = ['value' => (string) $v, 'flag' => $flag, 'status' => '1'];
         }
 
         return json_encode(['sensorDatas' => $items, 'time' => $waktu]);
@@ -56,11 +56,11 @@ class BliiotParserTest extends TestCase
         $this->assertEqualsWithDelta(70.8, $r['signal_up'], 1e-9);
     }
 
-    public function test_titik_berstatus_bukan_nol_dibuang(): void
+    public function test_titik_berstatus_nol_dibuang(): void
     {
         $json = json_encode(['sensorDatas' => [
-            ['value' => '999', 'flag' => 'REG21000', 'status' => '1'],
-            ['value' => '0.7', 'flag' => 'REG21002', 'status' => '0'],
+            ['value' => '999', 'flag' => 'REG21000', 'status' => '0'],
+            ['value' => '0.7', 'flag' => 'REG21002', 'status' => '1'],
         ], 'time' => '1794500845']);
         $r = (new MessageParser)->parse($json, [], Carbon::now());
         $this->assertNull($r['flow_rate']);
